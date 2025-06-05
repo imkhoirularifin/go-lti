@@ -10,18 +10,21 @@ import (
 	"go-lti/internal/domain/dto"
 	"go-lti/internal/domain/interfaces"
 	"go-lti/lib/config"
+	"go-lti/lib/httpclient"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
 type service struct {
 	cfg        config.AppConfig
-	httpClient *http.Client
+	httpClient httpclient.HttpClient
 	nonceCache map[string]string
 }
 
@@ -45,7 +48,7 @@ func (s *service) GetJwks(c *fiber.Ctx) (*dto.JwksResponse, error) {
 	}
 
 	// Set JWK attributes
-	key.Set(jwk.KeyIDKey, "my-lti-key")
+	key.Set(jwk.KeyIDKey, s.cfg.LtiConfig.JwkKid)
 	key.Set(jwk.AlgorithmKey, "RS256")
 	key.Set(jwk.KeyUsageKey, "sig")
 
@@ -79,6 +82,8 @@ func (s *service) LtiLogin(c *fiber.Ctx, request *dto.LtiLoginRequest) (string, 
 
 // LtiLaunch : Public method to handle LTI launch
 func (s *service) LtiLaunch(c *fiber.Ctx, request *dto.LtiLaunchRequest) (*dto.LtiJwtTokenClaims, error) {
+	fmt.Printf("request.IdToken: %v\n", request.IdToken)
+
 	claims, err := s.validateJWT(request.IdToken)
 	if err != nil {
 		return nil, err
@@ -97,12 +102,48 @@ func (s *service) LtiLaunch(c *fiber.Ctx, request *dto.LtiLaunchRequest) (*dto.L
 	return claims, nil
 }
 
+// RequestAccessToken : Used to request LTI access token from Canvas
+func (s *service) RequestAccessToken(c *fiber.Ctx) (any, error) {
+	canvasDomain := s.cfg.CanvasConfig.Domain
+	grantType := "client_credentials"
+	clientAssertionType := "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+	clientAssertion, err := s.generateJWT()
+	if err != nil {
+		return nil, err
+	}
+	scope := "https://purl.imsglobal.org/spec/lti/scope/noticehandlers"
+
+	url := fmt.Sprintf("https://%s/login/oauth2/token", canvasDomain)
+
+	body := map[string]string{
+		"grant_type":            grantType,
+		"client_assertion_type": clientAssertionType,
+		"client_assertion":      clientAssertion,
+		"scope":                 scope,
+	}
+
+	var accessTokenResponse interface{}
+	err = s.httpClient.Call(c.Context(), http.MethodPost, url, map[string]string{
+		fiber.HeaderContentType: fiber.MIMEApplicationJSON,
+		fiber.HeaderAccept:      fiber.MIMEApplicationJSON,
+	}, body, &accessTokenResponse)
+	if err != nil {
+		return nil, err
+	}
+
+	return accessTokenResponse, nil
+}
+
 // validateJWT : Private method to validate JWT
 func (s *service) validateJWT(idToken string) (*dto.LtiJwtTokenClaims, error) {
-	jwksUrl := fmt.Sprintf("https://%s/api/lti/security/jwks", s.cfg.LtiConfig.CanvasDomain)
+	jwksUrl := fmt.Sprintf("https://%s/api/lti/security/jwks", s.cfg.CanvasConfig.Domain)
 
 	// Get JWKS with http client
-	resp, err := s.httpClient.Get(jwksUrl)
+	client := http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	resp, err := client.Get(jwksUrl)
 	if err != nil {
 		return nil, err
 	}
@@ -143,11 +184,56 @@ func (s *service) validateJWT(idToken string) (*dto.LtiJwtTokenClaims, error) {
 	return &claims, nil
 }
 
+// generateJWT : Private method to generate JWT for LTI access token request
+func (s *service) generateJWT() (string, error) {
+	privateKeyData, err := os.ReadFile(s.cfg.KeyConfig.PrivateKeyPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read private key: %w", err)
+	}
+
+	// Decode PEM
+	block, _ := pem.Decode(privateKeyData)
+	if block == nil {
+		return "", fmt.Errorf("failed to decode PEM block")
+	}
+
+	// Parse private key
+	privateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse private key: %w", err)
+	}
+
+	// Create JWT
+	token := jwt.New()
+	token.Set(jwt.IssuerKey, s.cfg.LtiConfig.Issuer)
+	token.Set(jwt.SubjectKey, s.cfg.LtiConfig.ClientId)
+	token.Set(jwt.AudienceKey, fmt.Sprintf("https://%s/login/oauth2/token", s.cfg.CanvasConfig.Domain))
+	token.Set(jwt.IssuedAtKey, time.Now().Unix())
+	token.Set(jwt.ExpirationKey, time.Now().Add(10*time.Minute).Unix())
+	token.Set(jwt.JwtIDKey, uuid.New().String())
+
+	// Create a key from the private key
+	key, err := jwk.FromRaw(privateKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to create key: %w", err)
+	}
+	key.Set(jwk.KeyIDKey, s.cfg.LtiConfig.JwkKid)
+	key.Set(jwk.AlgorithmKey, jwa.RS256)
+	key.Set(jwk.KeyUsageKey, "sig")
+
+	// Sign the token with the key
+	signedToken, err := jwt.Sign(token, jwt.WithKey(jwa.RS256, key))
+	if err != nil {
+		return "", fmt.Errorf("failed to sign token: %w", err)
+	}
+
+	return string(signedToken), nil
+}
+
 func NewService(
 	cfg config.AppConfig,
+	httpClient httpclient.HttpClient,
 ) interfaces.LtiService {
-	httpClient := &http.Client{}
-
 	return &service{
 		cfg:        cfg,
 		httpClient: httpClient,

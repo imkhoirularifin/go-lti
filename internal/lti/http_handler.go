@@ -19,43 +19,41 @@ func NewHttpHandler(r fiber.Router, ltiService interfaces.LtiService) {
 	r.Post("/login", handler.ltiLogin)
 	r.Post("/launch", handler.ltiLaunch)
 	r.Get("/jwks", handler.jwks)
+	r.Get("/access_token", handler.requestAccessToken)
+}
+
+func (h *httpHandler) jwks(c *fiber.Ctx) error {
+	jwks, err := h.ltiService.GetJwks(c)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(jwks)
 }
 
 func (h *httpHandler) ltiLogin(c *fiber.Ctx) error {
 	request := new(dto.LtiLoginRequest)
 	if err := c.BodyParser(request); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(dto.ResponseDto{
-			Message:     "Invalid request body",
-			ErrorDetail: err.Error(),
-		})
+		return err
 	}
 
 	authURL, err := h.ltiService.LtiLogin(c, request)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(dto.ResponseDto{
-			Message:     "Failed to generate auth URL",
-			ErrorDetail: err.Error(),
-		})
+		return err
 	}
 
-	return c.Redirect(authURL, fiber.StatusFound)
+	return c.Redirect(authURL, fiber.StatusTemporaryRedirect)
 }
 
 func (h *httpHandler) ltiLaunch(c *fiber.Ctx) error {
 	request := new(dto.LtiLaunchRequest)
 	if err := c.BodyParser(request); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(dto.ResponseDto{
-			Message:     "Invalid request body",
-			ErrorDetail: err.Error(),
-		})
+		return err
 	}
 
 	claims, err := h.ltiService.LtiLaunch(c, request)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(dto.ResponseDto{
-			Message:     "Failed to launch LTI",
-			ErrorDetail: err.Error(),
-		})
+		return err
 	}
 
 	return c.Status(fiber.StatusOK).JSON(dto.ResponseDto{
@@ -64,14 +62,14 @@ func (h *httpHandler) ltiLaunch(c *fiber.Ctx) error {
 	})
 }
 
-func (h *httpHandler) jwks(c *fiber.Ctx) error {
-	jwks, err := h.ltiService.GetJwks(c)
+func (h *httpHandler) requestAccessToken(c *fiber.Ctx) error {
+	accessToken, err := h.ltiService.RequestAccessToken(c)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(dto.ResponseDto{
-			Message:     "Failed to get JWKS",
-			ErrorDetail: err.Error(),
-		})
+		return err
 	}
 
-	return c.JSON(jwks)
+	return c.Status(fiber.StatusOK).JSON(dto.ResponseDto{
+		Message: "LTI access token",
+		Data:    accessToken,
+	})
 }

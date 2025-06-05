@@ -71,10 +71,18 @@ type LtiJwtTokenClaims struct {
 		Scope                   []string `json:"scope"`
 		NoticeTypesSupported    []string `json:"notice_types_supported"`
 	} `json:"https://purl.imsglobal.org/spec/lti/claim/platformnotificationservice"`
-	Locale            string   `json:"locale"`
-	Roles             []string `json:"https://purl.imsglobal.org/spec/lti/claim/roles"`
-	Custom            struct{} `json:"https://purl.imsglobal.org/spec/lti/claim/custom"`
-	Lti11LegacyUserID string   `json:"https://purl.imsglobal.org/spec/lti/claim/lti11_legacy_user_id"`
+	Locale   string   `json:"locale"`
+	Roles    []string `json:"https://purl.imsglobal.org/spec/lti/claim/roles"`
+	Custom   struct{} `json:"https://purl.imsglobal.org/spec/lti/claim/custom"`
+	Endpoint struct {
+		Scope     []string `json:"scope"`
+		LineItems string   `json:"lineitems"`
+	} `json:"https://purl.imsglobal.org/spec/lti-ags/claim/endpoint"`
+	NamesRoleService struct {
+		ContextMembershipsUrl string   `json:"context_memberships_url"`
+		ServiceVersions       []string `json:"service_versions"`
+	} `json:"https://purl.imsglobal.org/spec/lti-nrps/claim/namesroleservice"`
+	Lti11LegacyUserID string `json:"https://purl.imsglobal.org/spec/lti/claim/lti11_legacy_user_id"`
 	Lti1p1            struct {
 		UserID string `json:"user_id"`
 	} `json:"https://purl.imsglobal.org/spec/lti/claim/lti1p1"`
