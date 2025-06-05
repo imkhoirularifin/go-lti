@@ -25,16 +25,16 @@ func (h *httpHandler) ltiLogin(c *fiber.Ctx) error {
 	request := new(dto.LtiLoginRequest)
 	if err := c.BodyParser(request); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(dto.ResponseDto{
-			Message: "Invalid request body",
-			Data:    err.Error(),
+			Message:     "Invalid request body",
+			ErrorDetail: err.Error(),
 		})
 	}
 
 	authURL, err := h.ltiService.LtiLogin(c, request)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(dto.ResponseDto{
-			Message: "Failed to generate auth URL",
-			Data:    err.Error(),
+			Message:     "Failed to generate auth URL",
+			ErrorDetail: err.Error(),
 		})
 	}
 
@@ -45,16 +45,16 @@ func (h *httpHandler) ltiLaunch(c *fiber.Ctx) error {
 	request := new(dto.LtiLaunchRequest)
 	if err := c.BodyParser(request); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(dto.ResponseDto{
-			Message: "Invalid request body",
-			Data:    err.Error(),
+			Message:     "Invalid request body",
+			ErrorDetail: err.Error(),
 		})
 	}
 
 	claims, err := h.ltiService.LtiLaunch(c, request)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(dto.ResponseDto{
-			Message: "Failed to launch LTI",
-			Data:    err.Error(),
+			Message:     "Failed to launch LTI",
+			ErrorDetail: err.Error(),
 		})
 	}
 
@@ -68,8 +68,8 @@ func (h *httpHandler) jwks(c *fiber.Ctx) error {
 	jwks, err := h.ltiService.GetJwks(c)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(dto.ResponseDto{
-			Message: "Failed to get JWKS",
-			Data:    err.Error(),
+			Message:     "Failed to get JWKS",
+			ErrorDetail: err.Error(),
 		})
 	}
 
