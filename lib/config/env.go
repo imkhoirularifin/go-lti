@@ -20,6 +20,7 @@ type LtiConfig struct {
 type KeyConfig struct {
 	PrivateKeyPath string `env:"PRIVATE_KEY_PATH"`
 	PublicKeyPath  string `env:"PUBLIC_KEY_PATH"`
+	JwtSecret      string `env:"JWT_SECRET"`
 }
 
 func Setup() (AppConfig, error) {
